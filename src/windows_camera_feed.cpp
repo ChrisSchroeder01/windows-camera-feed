@@ -1,84 +1,117 @@
 #include "windows_camera_feed.h"
 
+#include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/camera_server.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
-
 #include <opencv2/imgproc.hpp>
 
-namespace godot {
+namespace godot
+{
 
-WindowsCameraFeed::WindowsCameraFeed() {
-    set_name("WindowsCameraFeed");
-    set_position(CameraFeed::FEED_FRONT);
-}
+    WindowsCameraNode::WindowsCameraNode() {}
 
-WindowsCameraFeed::~WindowsCameraFeed() {
-    if (_running) {
+    WindowsCameraNode::~WindowsCameraNode()
+    {
+        _stop();
+    }
+
+    void WindowsCameraNode::_bind_methods()
+    {
+        ClassDB::bind_method(D_METHOD("set_camera_index", "index"), &WindowsCameraNode::set_camera_index);
+        ClassDB::bind_method(D_METHOD("get_camera_index"), &WindowsCameraNode::get_camera_index);
+        ADD_PROPERTY(PropertyInfo(Variant::INT, "camera_index"), "set_camera_index", "get_camera_index");
+    }
+
+    void WindowsCameraNode::_notification(int p_what)
+    {
+        switch (p_what)
+        {
+        case NOTIFICATION_READY:
+            if (Engine::get_singleton()->is_editor_hint())
+            {
+                return;
+            }
+            _start();
+            break;
+        case NOTIFICATION_EXIT_TREE:
+            _stop();
+            break;
+        }
+    }
+
+    void WindowsCameraNode::set_camera_index(int p_index) { _camera_index = p_index; }
+    int WindowsCameraNode::get_camera_index() const { return _camera_index; }
+
+    void WindowsCameraNode::_start()
+    {
+        if (_running)
+            return;
+
+        // Create a plain CameraFeed — no subclassing needed
+        _feed.instantiate();
+        _feed->set_name("OpenCVCamera");
+        _feed->set_position(CameraFeed::FEED_FRONT);
+
+        CameraServer *cs = CameraServer::get_singleton();
+        if (!cs)
+        {
+
+            return;
+        }
+        cs->add_feed(_feed);
+
+        _cap.open(_camera_index, cv::CAP_DSHOW);
+        if (!_cap.isOpened())
+        {
+
+            cs->remove_feed(_feed);
+            _feed.unref();
+            return;
+        }
+
+        _running = true;
+        _thread = std::thread(&WindowsCameraNode::_capture_loop, this);
+    }
+
+    void WindowsCameraNode::_stop()
+    {
+        if (!_running)
+            return;
         _running = false;
-        if (_thread.joinable()) _thread.join();
-    }
-}
+        if (_thread.joinable())
+            _thread.join();
+        _cap.release();
 
-void WindowsCameraFeed::_bind_methods() {
-    ClassDB::bind_method(D_METHOD("set_camera_index", "index"), &WindowsCameraFeed::set_camera_index);
-    ClassDB::bind_method(D_METHOD("get_camera_index"),          &WindowsCameraFeed::get_camera_index);
-    ADD_PROPERTY(PropertyInfo(Variant::INT, "camera_index"), "set_camera_index", "get_camera_index");
-}
-
-void WindowsCameraFeed::set_camera_index(int p_index) {
-    _camera_index = p_index;
-}
-
-int WindowsCameraFeed::get_camera_index() const {
-    return _camera_index;
-}
-
-bool WindowsCameraFeed::_activate_feed() {
-    if (_running) return true;
-
-    _cap.open(_camera_index, cv::CAP_DSHOW);
-    if (!_cap.isOpened()) {
-        UtilityFunctions::printerr("WindowsCameraFeed: failed to open camera index ", _camera_index);
-        return false;
+        CameraServer *cs = CameraServer::get_singleton();
+        if (cs && _feed.is_valid())
+        {
+            cs->remove_feed(_feed);
+        }
+        _feed.unref();
     }
 
-    _running = true;
-    _thread  = std::thread(&WindowsCameraFeed::_capture_loop, this);
-    return true;
-}
+    void WindowsCameraNode::_capture_loop()
+    {
+        cv::Mat frame_bgr, frame_rgb;
+        while (_running)
+        {
+            if (!_cap.read(frame_bgr) || frame_bgr.empty())
+                continue;
 
-void WindowsCameraFeed::_deactivate_feed() {
-    _running = false;
-    if (_thread.joinable()) _thread.join();
-    _cap.release();
-}
+            cv::cvtColor(frame_bgr, frame_rgb, cv::COLOR_BGR2RGB);
 
-void WindowsCameraFeed::_capture_loop() {
-    cv::Mat frame_bgr;
-    cv::Mat frame_rgb;
+            PackedByteArray bytes;
+            bytes.resize(frame_rgb.total() * frame_rgb.elemSize());
+            memcpy(bytes.ptrw(), frame_rgb.data, bytes.size());
 
-    while (_running) {
-        if (!_cap.read(frame_bgr) || frame_bgr.empty()) continue;
+            Ref<Image> img = Image::create_from_data(
+                frame_rgb.cols, frame_rgb.rows,
+                false, Image::FORMAT_RGB8, bytes);
 
-        cv::cvtColor(frame_bgr, frame_rgb, cv::COLOR_BGR2RGB);
-
-        // Wrap into a Godot Image (no copy — data pointer is valid for this scope)
-        PackedByteArray bytes;
-        bytes.resize(frame_rgb.total() * frame_rgb.elemSize());
-        memcpy(bytes.ptrw(), frame_rgb.data, bytes.size());
-
-        Ref<Image> img = Image::create_from_data(
-            frame_rgb.cols,
-            frame_rgb.rows,
-            false,
-            Image::FORMAT_RGB8,
-            bytes
-        );
-
-        // Push the frame into the CameraFeed — Godot signals frame_changed automatically
-        set_rgb_image(img);
+            _feed->set_rgb_image(img);
+        }
     }
-}
 
 } // namespace godot
