@@ -1,0 +1,9 @@
+[configuration]
+entry_symbol = "windows_camera_feed_init"
+compatibility_minimum = "4.2"
+reloadable = true
+
+[libraries]
+windows.debug.x86_64     = "res://addons/windows-camera-feed/bin/Debug/windows_camera_feed.dll"
+windows.release.x86_64   = "res://addons/windows-camera-feed/bin/Release/windows_camera_feed.dll"
+
