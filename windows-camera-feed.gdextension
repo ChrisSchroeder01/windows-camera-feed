@@ -4,5 +4,5 @@ compatibility_minimum = "4.2"
 reloadable = false
 
 [libraries]
-windows.debug.x86_64     = "res://addons/windows-camera-feed/bin/Debug/windows_camera_feed.dll"
-windows.release.x86_64   = "res://addons/windows-camera-feed/bin/Release/windows_camera_feed.dll"
+windows.debug.x86_64     = "res://addons/windows-camera-feed/bin/Debug/libwindows_camera_feed.dll"
+windows.release.x86_64   = "res://addons/windows-camera-feed/bin/Release/libwindows_camera_feed.dll"

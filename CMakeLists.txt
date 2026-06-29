@@ -9,7 +9,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/.gdignore" "")
 
 set(GODOT_CPP_DIR "C:/libs/godot-cpp" CACHE PATH "Path to godot-cpp")
-set(OPENCV_DIR    "C:/libs/opencv/opencv/build" CACHE PATH "Path to OpenCV build dir")
 
 if(NOT EXISTS "${GODOT_CPP_DIR}/CMakeLists.txt")
     message(FATAL_ERROR
@@ -19,6 +18,8 @@ if(NOT EXISTS "${GODOT_CPP_DIR}/CMakeLists.txt")
 endif()
 
 add_subdirectory(${GODOT_CPP_DIR} godot-cpp)
+
+find_package(OpenCV REQUIRED)
 
 set(SOURCES
     src/register_types.cpp
@@ -30,20 +31,12 @@ add_library(${PROJECT_NAME} SHARED ${SOURCES})
 target_include_directories(${PROJECT_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
-        "${OPENCV_DIR}/include"
 )
 
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         godot-cpp
-        "${OPENCV_DIR}/x64/vc16/lib/opencv_world4120.lib"
-)
-
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${OPENCV_DIR}/x64/vc16/bin/opencv_world4120.dll"
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>
-    COMMENT "Copying opencv_world4120.dll to output"
+        ${OpenCV_LIBS}
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
